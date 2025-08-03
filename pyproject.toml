@@ -3,13 +3,13 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "avalon-discord-bot"
+name = "avalon-bot"
 version = "1.0.0"
-description = "A Discord bot for playing The Resistance: Avalon"
+description = "A Discord bot designed to facilitate and manage games of The Resistance: Avalon for 5-10 players. It offers complete game management, interactive UI with buttons and embeds, private role information via DMs, automated game flow, and includes all core Avalon roles."
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
-    {name = "Avalon Bot Team", email = ""}
+    {name = "git-davi"}
 ]
 keywords = ["discord", "bot", "game", "avalon", "resistance"]
 classifiers = [
@@ -32,6 +32,9 @@ dependencies = [
     "python-dotenv>=1.0.0",
 ]
 
+[project.license-files]
+patterns = ["LICENSE"]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=6.0",
@@ -42,10 +45,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/avalon-bot/avalon-discord-bot"
-Repository = "https://github.com/avalon-bot/avalon-discord-bot"
-Issues = "https://github.com/avalon-bot/avalon-discord-bot/issues"
-Documentation = "https://github.com/avalon-bot/avalon-discord-bot/blob/main/README.md"
+Homepage = "https://github.com/git-davi/avalon-bot"
+Repository = "https://github.com/git-davi/avalon-bot"
+Issues = "https://github.com/git-davi/avalon-bot/issues"
+Documentation = "https://github.com/git-davi/avalon-bot/blob/main/README.md"
 
 [project.scripts]
 avalon-bot = "avalon.__main__:main"
