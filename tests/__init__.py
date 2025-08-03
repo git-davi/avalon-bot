@@ -1,0 +1,1 @@
+"""Test package for The Resistance: Avalon Discord Bot."""
