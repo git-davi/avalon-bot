@@ -21,6 +21,7 @@ A Discord bot that facilitates games of The Resistance: Avalon for 5-10 players.
    - Go to [Discord Developer Portal](https://discord.com/developers/applications)
    - Create a new application and bot
    - Copy the bot token
+   - On the "Bot" page, enable the **Server Members Intent** under "Privileged Gateway Intents".
    - Enable the following bot permissions:
      - Send Messages
      - Use Slash Commands
@@ -28,6 +29,7 @@ A Discord bot that facilitates games of The Resistance: Avalon for 5-10 players.
      - Embed Links
      - Read Message History
      - Add Reactions
+     - Send DMs to Users
 
 3. **Configure environment**:
    ```bash

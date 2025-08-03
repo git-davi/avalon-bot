@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 # Bot setup
 intents = discord.Intents.default()
-intents.message_content = True
+intents.members = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 # Store active games by channel ID
