@@ -1,0 +1,10 @@
+[33mcommit aef687b5e13d793d8104357faa752d3e672dafa1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: git-davi <davidecasalini1@gmail.com>
+Date:   Sun Aug 3 21:02:31 2025 +0200
+
+    Update README with revised bot configuration instructions
+    
+    - Clarified steps for enabling Server Members Intent in the Discord Developer Portal.
+    - Added detailed instructions for setting up OAuth2 scopes and bot permissions.
+
+README.md

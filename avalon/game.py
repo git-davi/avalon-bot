@@ -30,6 +30,7 @@ class Player:
     username: str
     role: Optional[str] = None
     team: Optional[str] = None
+    is_ai: bool = False
     
     def is_evil(self) -> bool:
         return self.team == "evil"
@@ -63,14 +64,14 @@ class AvalonGame:
         self.merlin_id: Optional[int] = None
         self.assassin_id: Optional[int] = None
         
-    def add_player(self, user_id: int, username: str) -> bool:
+    def add_player(self, user_id: int, username: str, is_ai: bool = False) -> bool:
         """Add a player to the game. Returns True if successful."""
         if len(self.players) >= 10:
             return False
         if user_id in [p.user_id for p in self.players]:
             return False
         
-        self.players.append(Player(user_id, username))
+        self.players.append(Player(user_id, username, is_ai=is_ai))
         return True
     
     def remove_player(self, user_id: int) -> bool:

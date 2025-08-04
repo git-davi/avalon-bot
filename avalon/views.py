@@ -1,10 +1,13 @@
 """Discord UI components for The Resistance: Avalon bot."""
 
+import logging
 import discord
 from typing import Dict
 
 from .game import AvalonGame, GameState, MissionResult
 from .config import EMOJIS, ROLES
+
+logger = logging.getLogger(__name__)
 
 
 class JoinGameView(discord.ui.View):
@@ -31,12 +34,14 @@ class JoinGameView(discord.ui.View):
     
     @discord.ui.button(label='Start Game', style=discord.ButtonStyle.success, emoji='🎮')
     async def start_game(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+
         if interaction.user.id != self.game.host_id:
-            await interaction.response.send_message("Only the host can start the game.", ephemeral=True)
+            await interaction.followup.send("Only the host can start the game.", ephemeral=True)
             return
         
         if not self.game.can_start_game():
-            await interaction.response.send_message("Need 5-10 players to start the game.", ephemeral=True)
+            await interaction.followup.send("Need 5-10 players to start the game.", ephemeral=True)
             return
         
         # Assign roles and start the game
@@ -46,7 +51,11 @@ class JoinGameView(discord.ui.View):
         await send_role_dms(self.game, interaction.client)
         
         # Update the main message
-        await interaction.response.edit_message(embed=create_game_embed(self.game), view=GameView(self.game))
+        await interaction.edit_original_response(embed=create_game_embed(self.game), view=GameView(self.game))
+        
+        # Run AI players for the first turn if any
+        from .bot import run_ai_players
+        await run_ai_players(self.game)
     
     @discord.ui.button(label='Cancel Game', style=discord.ButtonStyle.danger, emoji='❌')
     async def cancel_game(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -68,56 +77,55 @@ class TeamVoteView(discord.ui.View):
     
     @discord.ui.button(label='Approve', style=discord.ButtonStyle.success, emoji='👍')
     async def approve_team(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.game.vote_team(interaction.user.id, True):
-            await interaction.response.send_message("You approved the team.", ephemeral=True)
-            
-            # Check if voting is complete
-            if len(self.game.team_votes) == len(self.game.players):
-                await self.finish_voting(interaction)
-        else:
-            await interaction.response.send_message("Could not record your vote.", ephemeral=True)
+        from .bot import process_team_vote_results
+        
+        try:
+            if self.game.vote_team(interaction.user.id, True):
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("You approved the team.", ephemeral=True)
+                
+                # Check if all votes are in and process results
+                if len(self.game.team_votes) == len(self.game.players):
+                    await process_team_vote_results(self.game)
+            else:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("Could not record your vote.", ephemeral=True)
+        except discord.errors.NotFound:
+            # Interaction has already timed out or been responded to, ignore
+            logger.warning(f"Interaction timed out for user {interaction.user.display_name}")
+        except Exception as e:
+            logger.error(f"Error in approve_team: {e}")
+            if not interaction.response.is_done():
+                try:
+                    await interaction.response.send_message("An error occurred while processing your vote.", ephemeral=True)
+                except:
+                    pass
     
     @discord.ui.button(label='Reject', style=discord.ButtonStyle.danger, emoji='👎')
     async def reject_team(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.game.vote_team(interaction.user.id, False):
-            await interaction.response.send_message("You rejected the team.", ephemeral=True)
-            
-            # Check if voting is complete
-            if len(self.game.team_votes) == len(self.game.players):
-                await self.finish_voting(interaction)
-        else:
-            await interaction.response.send_message("Could not record your vote.", ephemeral=True)
-    
-    async def finish_voting(self, interaction: discord.Interaction):
-        """Handle the completion of team voting."""
-        approvals = sum(1 for vote in self.game.team_votes.values() if vote)
-        rejections = len(self.game.team_votes) - approvals
+        from .bot import process_team_vote_results
         
-        # Create vote results embed
-        vote_embed = discord.Embed(
-            title="Team Vote Results",
-            description=f"**{approvals} Approve, {rejections} Reject**",
-            color=discord.Color.green() if approvals > rejections else discord.Color.red()
-        )
-        
-        if self.game.state == GameState.MISSION:
-            vote_embed.add_field(name="Result", value="Team Approved! Starting mission...", inline=False)
-            # Send mission votes to team members
-            await send_mission_votes(self.game, self.bot)
-        elif self.game.state == GameState.TEAM_PROPOSAL:
-            vote_embed.add_field(name="Result", value="Team Rejected! Moving to next leader...", inline=False)
-        elif self.game.state == GameState.FINISHED:
-            vote_embed.add_field(name="Result", value="Too many rejections! Evil team wins!", inline=False)
-        
-        # Update the main game message
-        channel = self.bot.get_channel(self.game.channel_id)
-        if channel:
-            await channel.send(embed=vote_embed)
-            
-            if self.game.state != GameState.FINISHED:
-                # Update game state
-                game_message = await channel.send(embed=create_game_embed(self.game), view=GameView(self.game))
-
+        try:
+            if self.game.vote_team(interaction.user.id, False):
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("You rejected the team.", ephemeral=True)
+                
+                # Check if all votes are in and process results
+                if len(self.game.team_votes) == len(self.game.players):
+                    await process_team_vote_results(self.game)
+            else:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("Could not record your vote.", ephemeral=True)
+        except discord.errors.NotFound:
+            # Interaction has already timed out or been responded to, ignore
+            logger.warning(f"Interaction timed out for user {interaction.user.display_name}")
+        except Exception as e:
+            logger.error(f"Error in reject_team: {e}")
+            if not interaction.response.is_done():
+                try:
+                    await interaction.response.send_message("An error occurred while processing your vote.", ephemeral=True)
+                except:
+                    pass
 
 class MissionVoteView(discord.ui.View):
     """View for mission voting (sent via DM)."""
@@ -128,60 +136,57 @@ class MissionVoteView(discord.ui.View):
         self.user_id = user_id
         self.bot = bot
         
-        # Only show Fail button to evil players
         player = next((p for p in game.players if p.user_id == user_id), None)
         if not player or player.is_good():
             self.remove_item(self.fail_mission)
-    
+            
     @discord.ui.button(label='Success', style=discord.ButtonStyle.success, emoji='✅')
     async def success_mission(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.game.vote_mission(self.user_id, True):
-            await interaction.response.edit_message(content="You voted for the mission to **succeed**.", view=None)
+        from .bot import process_mission_vote_results
+        
+        try:
+            if self.game.vote_mission(self.user_id, True):
+                if not interaction.response.is_done():
+                    await interaction.response.edit_message(content="You voted for the mission to **succeed**.", view=None)
+                
+                if len(self.game.mission_votes) == len(self.game.proposed_team):
+                    await process_mission_vote_results(self.game)
+            else:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("Could not record your vote.", ephemeral=True)
+        except discord.errors.NotFound:
+            logger.warning(f"Interaction timed out for mission vote by user {interaction.user.display_name}")
+        except Exception as e:
+            logger.error(f"Error in success_mission: {e}")
+            if not interaction.response.is_done():
+                try:
+                    await interaction.response.send_message("An error occurred while processing your vote.", ephemeral=True)
+                except:
+                    pass
             
-            # Check if all mission votes are in
-            if len(self.game.mission_votes) == len(self.game.proposed_team):
-                await self.finish_mission_voting()
-        else:
-            await interaction.response.send_message("Could not record your vote.", ephemeral=True)
-    
     @discord.ui.button(label='Fail', style=discord.ButtonStyle.danger, emoji='❌')
     async def fail_mission(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.game.vote_mission(self.user_id, False):
-            await interaction.response.edit_message(content="You voted for the mission to **fail**.", view=None)
-            
-            # Check if all mission votes are in
-            if len(self.game.mission_votes) == len(self.game.proposed_team):
-                await self.finish_mission_voting()
-        else:
-            await interaction.response.send_message("Could not record your vote.", ephemeral=True)
-    
-    async def finish_mission_voting(self):
-        """Handle the completion of mission voting."""
-        fails = sum(1 for vote in self.game.mission_votes.values() if not vote)
+        from .bot import process_mission_vote_results
         
-        # Create mission results embed
-        channel = self.bot.get_channel(self.game.channel_id)
-        if channel:
-            mission_embed = discord.Embed(
-                title=f"Mission {self.game.current_round} Results",
-                color=discord.Color.red() if fails > 0 else discord.Color.green()
-            )
-            
-            if self.game.missions[self.game.current_round - 1] == MissionResult.SUCCESS:
-                mission_embed.description = f"**Mission Successful!** {fails} Fail votes."
+        try:
+            if self.game.vote_mission(self.user_id, False):
+                if not interaction.response.is_done():
+                    await interaction.response.edit_message(content="You voted for the mission to **fail**.", view=None)
+                
+                if len(self.game.mission_votes) == len(self.game.proposed_team):
+                    await process_mission_vote_results(self.game)
             else:
-                mission_embed.description = f"**Mission Failed!** {fails} Fail votes."
-            
-            await channel.send(embed=mission_embed)
-            
-            # Check if game is over
-            if self.game.state == GameState.FINISHED:
-                await send_game_over_message(self.game, self.bot)
-            elif self.game.state == GameState.ASSASSINATION:
-                await send_assassination_message(self.game, self.bot)
-            else:
-                # Continue to next round
-                await channel.send(embed=create_game_embed(self.game), view=GameView(self.game))
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("Could not record your vote.", ephemeral=True)
+        except discord.errors.NotFound:
+            logger.warning(f"Interaction timed out for mission vote by user {interaction.user.display_name}")
+        except Exception as e:
+            logger.error(f"Error in fail_mission: {e}")
+            if not interaction.response.is_done():
+                try:
+                    await interaction.response.send_message("An error occurred while processing your vote.", ephemeral=True)
+                except:
+                    pass
 
 
 class GameView(discord.ui.View):
@@ -338,35 +343,64 @@ def create_role_embed(role_info: dict) -> discord.Embed:
 
 async def send_role_dms(game: AvalonGame, bot):
     """Send role information to all players via DM."""
+    from .bot import DEBUG_MODE
+    
+    logger.debug(f"Sending role DMs for game in channel {game.channel_id}")
+
+    if DEBUG_MODE:
+        roles_info = "--- Player Roles (Debug) ---\n"
+        for p in game.players:
+            roles_info += f"- {p.username}: {p.role}\n"
+        roles_info += "--------------------------"
+        logger.info(roles_info)
+
+    dm_failures = []
+    successful_dms = 0
+    
     for player in game.players:
+        # Don't try to send DMs to AI players
+        if player.is_ai:
+            logger.debug(f"Skipping DM for AI player {player.username} (ID: {player.user_id})")
+            continue
+            
         try:
-            user = bot.get_user(player.user_id)
+            logger.debug(f"Attempting to send role DM to {player.username} (ID: {player.user_id})")
+            user = await bot.fetch_user(player.user_id)
             if user:
                 role_info = game.get_role_info_for_player(player.user_id)
+                if not role_info:
+                    logger.error(f"No role info found for {player.username}")
+                    continue
+                    
                 embed = create_role_embed(role_info)
                 await user.send(embed=embed)
-        except discord.Forbidden:
-            # User has DMs disabled
-            pass
-
-
-async def send_mission_votes(game: AvalonGame, bot):
-    """Send mission voting options to team members via DM."""
-    for user_id in game.proposed_team:
-        try:
-            user = bot.get_user(user_id)
-            if user:
-                embed = discord.Embed(
-                    title=f"Mission {game.current_round} Vote",
-                    description="You are on the mission team! Vote for the mission outcome:",
-                    color=discord.Color.gold()
-                )
-                
-                view = MissionVoteView(game, user_id, bot)
-                await user.send(embed=embed, view=view)
-        except discord.Forbidden:
-            # User has DMs disabled
-            pass
+                logger.info(f"✅ Successfully sent role DM to {player.username}")
+                successful_dms += 1
+            else:
+                logger.error(f"Could not fetch user object for {player.username} ({player.user_id})")
+                dm_failures.append(player)
+        except discord.Forbidden as e:
+            logger.warning(f"❌ Cannot send DM to {player.username} ({player.user_id}): DMs disabled or not allowed. Error: {e}")
+            dm_failures.append(player)
+        except discord.HTTPException as e:
+            logger.error(f"❌ HTTP error sending DM to {player.username} ({player.user_id}): {e}")
+            dm_failures.append(player)
+        except Exception as e:
+            logger.error(f"❌ Unexpected error sending DM to {player.username} ({player.user_id}): {e}")
+            dm_failures.append(player)
+    
+    # Report results and handle failures
+    logger.info(f"DM Results: {successful_dms}/{len([p for p in game.players if p.user_id <= 900000])} successful")
+    
+    if dm_failures:
+        # Notify in channel about failed DMs
+        channel = bot.get_channel(game.channel_id)
+        if channel:
+            failed_mentions = [f"<@{p.user_id}>" for p in dm_failures]
+            await channel.send(
+                f"⚠️ Could not send role information via DM to: {', '.join(failed_mentions)}\n"
+                f"Please check your DM settings and allow messages from server members, or contact the host for your role information."
+            )
 
 
 async def send_assassination_message(game: AvalonGame, bot):
